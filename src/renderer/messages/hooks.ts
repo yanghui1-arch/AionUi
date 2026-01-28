@@ -69,6 +69,28 @@ function composeMessageWithIndex(message: TMessage, list: TMessage[], index: Mes
   if (!message) return list || [];
   if (!list?.length) return [message];
 
+  const updateAt = (idx: number, nextMessage: TMessage) => {
+    const nextList = list.slice();
+    nextList[idx] = nextMessage;
+    return nextList;
+  };
+
+  const appendMessage = (nextMessage: TMessage) => {
+    const nextList = list.concat(nextMessage);
+    const newIdx = nextList.length - 1;
+    if (nextMessage.msg_id) index.msgIdIndex.set(nextMessage.msg_id, newIdx);
+    if (nextMessage.type === 'tool_call' && nextMessage.content?.callId) {
+      index.callIdIndex.set(nextMessage.content.callId, newIdx);
+    }
+    if (nextMessage.type === 'codex_tool_call' && nextMessage.content?.toolCallId) {
+      index.toolCallIdIndex.set(nextMessage.content.toolCallId, newIdx);
+    }
+    if (nextMessage.type === 'acp_tool_call' && nextMessage.content?.update?.toolCallId) {
+      index.toolCallIdIndex.set(nextMessage.content.update.toolCallId, newIdx);
+    }
+    return nextList;
+  };
+
   // 对于 tool_group 类型，使用原始的 composeMessage（因为涉及内部数组匹配）
   // For tool_group type, use original composeMessage (involves inner array matching)
   if (message.type === 'tool_group') {
@@ -82,15 +104,12 @@ function composeMessageWithIndex(message: TMessage, list: TMessage[], index: Mes
     if (existingIdx !== undefined && existingIdx < list.length) {
       const existingMsg = list[existingIdx];
       if (existingMsg.type === 'tool_call') {
-        const newList = list.slice();
         const merged = { ...existingMsg.content, ...message.content };
-        newList[existingIdx] = { ...existingMsg, content: merged };
-        return newList;
+        return updateAt(existingIdx, { ...existingMsg, content: merged });
       }
     }
     // 未找到，添加新消息
-    list.push(message);
-    return list;
+    return appendMessage(message);
   }
 
   // codex_tool_call: 使用 toolCallIdIndex 快速查找
@@ -100,14 +119,11 @@ function composeMessageWithIndex(message: TMessage, list: TMessage[], index: Mes
     if (existingIdx !== undefined && existingIdx < list.length) {
       const existingMsg = list[existingIdx];
       if (existingMsg.type === 'codex_tool_call') {
-        const newList = list.slice();
         const merged = { ...existingMsg.content, ...message.content };
-        newList[existingIdx] = { ...existingMsg, content: merged };
-        return newList;
+        return updateAt(existingIdx, { ...existingMsg, content: merged });
       }
     }
-    list.push(message);
-    return list;
+    return appendMessage(message);
   }
 
   // acp_tool_call: 使用 toolCallIdIndex 快速查找
@@ -117,29 +133,35 @@ function composeMessageWithIndex(message: TMessage, list: TMessage[], index: Mes
     if (existingIdx !== undefined && existingIdx < list.length) {
       const existingMsg = list[existingIdx];
       if (existingMsg.type === 'acp_tool_call') {
-        const newList = list.slice();
         const merged = { ...existingMsg.content, ...message.content };
-        newList[existingIdx] = { ...existingMsg, content: merged };
-        return newList;
+        return updateAt(existingIdx, { ...existingMsg, content: merged });
       }
     }
-    list.push(message);
-    return list;
+    return appendMessage(message);
   }
 
   // 其他类型: 使用 msgIdIndex + 原始逻辑
   // Other types: use msgIdIndex + original logic
   const last = list[list.length - 1];
   if (last.msg_id !== message.msg_id || last.type !== message.type) {
-    return list.concat(message);
+    return appendMessage(message);
   }
 
   // 合并 text 消息
   if (message.type === 'text' && last.type === 'text') {
-    message.content.content = last.content.content + message.content.content;
+    const mergedContent = last.content.content + message.content.content;
+    return updateAt(list.length - 1, {
+      ...last,
+      ...message,
+      content: {
+        ...last.content,
+        ...message.content,
+        content: mergedContent,
+      },
+    });
   }
-  Object.assign(last, message);
-  return list;
+
+  return updateAt(list.length - 1, { ...last, ...message });
 }
 
 export const useAddOrUpdateMessage = () => {
@@ -165,6 +187,7 @@ export const useAddOrUpdateMessage = () => {
           // New message, update index
           const msg = item.message;
           const newIdx = newList.length;
+          console.log(`new msg: ${JSON.stringify(msg)}`);
           if (msg.msg_id) index.msgIdIndex.set(msg.msg_id, newIdx);
           if (msg.type === 'tool_call' && msg.content?.callId) {
             index.callIdIndex.set(msg.content.callId, newIdx);

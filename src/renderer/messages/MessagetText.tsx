@@ -6,6 +6,7 @@
 
 import type { IMessageText } from '@/common/chatLib';
 import { AIONUI_FILES_MARKER } from '@/common/constants';
+import { useTypingAnimation } from '@/renderer/hooks/useTypingAnimation';
 import { iconColors } from '@/renderer/theme/colors';
 import { Alert, Tooltip } from '@arco-design/web-react';
 import { Copy } from '@icon-park/react';
@@ -49,14 +50,23 @@ const useFormatContent = (content: string) => {
 };
 
 const MessageText: React.FC<{ message: IMessageText }> = ({ message }) => {
-  const { text, files } = parseFileMarker(message.content.content);
+  const rawContent = message.content.content || '';
+  const { text, files } = parseFileMarker(rawContent);
   const { data, json } = useFormatContent(text);
   const { t } = useTranslation();
   const [showCopyAlert, setShowCopyAlert] = useState(false);
   const isUserMessage = message.position === 'right';
+  // Only non-user message has typing animation.
+  // 只有非用户消息才会启用打字机效果
+  const shouldAnimate = !isUserMessage && !json;
+  const { displayedContent } = useTypingAnimation({
+    content: text,
+    enabled: shouldAnimate,
+  });
+  const renderedText = shouldAnimate ? displayedContent : text;
 
   // 过滤空内容，避免渲染空DOM
-  if (!message.content.content || (typeof message.content.content === 'string' && !message.content.content.trim())) {
+  if (!rawContent || (typeof rawContent === 'string' && !rawContent.trim())) {
     return null;
   }
 
@@ -112,7 +122,7 @@ const MessageText: React.FC<{ message: IMessageText }> = ({ message }) => {
               <MarkdownView codeStyle={{ marginTop: 4, marginBlock: 4 }}>{`\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``}</MarkdownView>
             </CollapsibleContent>
           ) : (
-            <MarkdownView codeStyle={{ marginTop: 4, marginBlock: 4 }}>{data}</MarkdownView>
+            <MarkdownView codeStyle={{ marginTop: 4, marginBlock: 4 }}>{renderedText}</MarkdownView>
           )}
         </div>
         {/* <div

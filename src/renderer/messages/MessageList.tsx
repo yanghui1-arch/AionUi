@@ -94,7 +94,6 @@ const MessageList: React.FC<{ className?: string }> = () => {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
-  const previousListLengthRef = useRef(list.length);
   const { t } = useTranslation();
 
   // 预处理消息列表，将 Codex turn_diff 消息进行分组
@@ -151,6 +150,7 @@ const MessageList: React.FC<{ className?: string }> = () => {
   const scrollToBottom = useCallback(
     (smooth = false) => {
       if (virtuosoRef.current) {
+        if (!processedList.length) return;
         virtuosoRef.current.scrollToIndex({
           index: processedList.length - 1,
           behavior: smooth ? 'smooth' : 'auto',
@@ -161,35 +161,11 @@ const MessageList: React.FC<{ className?: string }> = () => {
     [processedList.length]
   );
 
-  // 当消息列表更新时，智能滚动
+  // 当消息流式更新且用户位于底部时，保持自动跟随
   useEffect(() => {
-    const currentListLength = list.length;
-    const isNewMessage = currentListLength !== previousListLengthRef.current;
-
-    // 更新记录的列表长度
-    previousListLengthRef.current = currentListLength;
-
-    // 检查最新消息是否是用户发送的（position === 'right'）
-    const lastMessage = list[list.length - 1];
-    const isUserMessage = lastMessage?.position === 'right';
-
-    // 如果是用户发送的消息，强制滚动到底部并重置滚动状态
-    if (isUserMessage && isNewMessage) {
-      setAtBottom(true);
-      setTimeout(() => {
-        scrollToBottom();
-      }, 100);
-      return;
-    }
-
-    // 如果用户不在底部且不是新消息添加，不自动滚动
-    // 只在新消息添加时且原本在底部时才自动滚动
-    if (isNewMessage && atBottom) {
-      setTimeout(() => {
-        scrollToBottom();
-      }, 100);
-    }
-  }, [list, atBottom, scrollToBottom]);
+    if (!atBottom) return;
+    scrollToBottom(false);
+  }, [list, processedList.length, atBottom, scrollToBottom]);
 
   // 点击滚动按钮
   const handleScrollButtonClick = () => {
@@ -219,7 +195,7 @@ const MessageList: React.FC<{ className?: string }> = () => {
             ref={virtuosoRef}
             className='flex-1 h-full pb-10px box-border'
             data={processedList}
-            initialTopMostItemIndex={processedList.length - 1}
+            initialTopMostItemIndex={processedList.length ? processedList.length - 1 : 0}
             atBottomStateChange={(isAtBottom) => {
               setAtBottom(isAtBottom);
               setShowScrollButton(!isAtBottom);
@@ -227,7 +203,7 @@ const MessageList: React.FC<{ className?: string }> = () => {
             atBottomThreshold={100}
             increaseViewportBy={200}
             itemContent={renderItem}
-            followOutput='auto'
+            followOutput={atBottom ? 'smooth' : false}
             components={{
               Header: () => <div className='h-10px' />,
               Footer: () => <div className='h-20px' />,

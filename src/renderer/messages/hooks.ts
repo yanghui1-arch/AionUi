@@ -187,7 +187,6 @@ export const useAddOrUpdateMessage = () => {
           // New message, update index
           const msg = item.message;
           const newIdx = newList.length;
-          console.log(`new msg: ${JSON.stringify(msg)}`);
           if (msg.msg_id) index.msgIdIndex.set(msg.msg_id, newIdx);
           if (msg.type === 'tool_call' && msg.content?.callId) {
             index.callIdIndex.set(msg.content.callId, newIdx);
